@@ -14,8 +14,8 @@ import sys
 import xxhash
 
 
-HOME = pathlib.Path("~").expanduser() / "Documents"
-assert HOME.exists()
+assert sys.version_info >= (3, 6, 0)
+
 
 DUPLICATES = 0
 TOTAL = 0
@@ -111,16 +111,36 @@ def group_matches_by(filepaths, func):
     return groups
 
 
+def get_path():
+    try:
+        path = sys.argv[1]
+    except IndexError:
+        path = os.environ["SAVED_PWD"]
+
+    path = pathlib.Path(path)
+
+    inp = input(f"Dedupe will recursively search '{path}'.\nIs that ok? [Y/n] ")
+    if inp not in 'Yy':
+        print("Cancelling.")
+        exit(1)
+
+    assert path.exists()
+    return path
+
+
 def main():
     global DUPLICATES
     global TOTAL
     global TOTAL_BYTES
     global DUPLICATE_BYTES
 
-    all_entries = yield_entries(HOME)
+    path = get_path()
+
+    all_entries = yield_entries(path)
 
     sizes = group_matches_by(all_entries, lambda e: e.stat().st_size)
-    del sizes[0]
+    if 0 in sizes:
+        del sizes[0]
 
     print("\n\n")
     for (size, entries_by_size) in sorted(sizes.items()):

@@ -42,7 +42,7 @@ def human_bytes(n):
     return f"{n:.2f}{abbrev}"
 
 
-def fast_hash(path, buffer=8192):
+def fast_hash(path, buffer=1024*1024):
     """
     Hashes the contents of the given filepath in chunks.
     Returns a hex digest (0-9a-f) of the SHA256 hash.

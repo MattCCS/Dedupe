@@ -70,7 +70,8 @@ def scantree(path):
             continue
 
         if entry.is_symlink():
-            return
+            continue
+
         elif entry.is_dir():
             yield from scantree(entry.path)
         else:

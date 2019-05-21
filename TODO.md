@@ -1,0 +1,2 @@
+- Mode to "focus" on a sub-folder, to determine if all of its contents have been copied out of it/organized elsewhere
+    - Tells you whether it's __safe to delete that folder__!

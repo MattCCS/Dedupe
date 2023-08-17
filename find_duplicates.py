@@ -17,12 +17,20 @@ import xxhash
 assert sys.version_info >= (3, 6, 0)
 
 
-DUPLICATES = 0
-TOTAL = 0
-TOTAL_BYTES = 0
+FILES_FOUND = 0
+FILES_SIZED = 0
+FILES_SCANNED = 0
+BYTES_SCANNED = 0
+DUPLICATE_FILES = 0
 DUPLICATE_BYTES = 0
 
 SIZE_MIN = 1 * 1024 * 1024
+
+
+def safe_percent(num, denom):
+    if not denom:
+        return "n/a"
+    return f"{num / denom:.1%}"
 
 
 def human_bytes(n):
@@ -65,7 +73,13 @@ def scantree(path):
     if str(path).startswith('.'):
         return
 
-    for entry in os.scandir(path):
+    try:
+        entries = os.scandir(path)
+    except PermissionError:
+        print(f"No permission to scan {str(path)}")
+        entries = []
+
+    for entry in entries:
         if entry.name.startswith('.'):
             continue
 
@@ -79,7 +93,7 @@ def scantree(path):
 
 
 def yield_entries(path):
-    global TOTAL
+    global FILES_FOUND
 
     gen = scantree(path)
     for entry in gen:
@@ -93,9 +107,9 @@ def yield_entries(path):
         # elif str(filepath).endswith(".pyc"):
         #     continue
 
-        TOTAL += 1
-        if not TOTAL % 100:
-            sys.stdout.write(f"{TOTAL} files found\r")
+        FILES_FOUND += 1
+        if not FILES_FOUND % 100:
+            sys.stdout.write(f"{FILES_FOUND} files found\r")
         yield entry
 
 
@@ -130,9 +144,11 @@ def get_path():
 
 
 def main():
-    global DUPLICATES
-    global TOTAL
-    global TOTAL_BYTES
+    global FILES_FOUND
+    global FILES_SIZED
+    global FILES_SCANNED
+    global BYTES_SCANNED
+    global DUPLICATE_FILES
     global DUPLICATE_BYTES
 
     path = get_path()
@@ -145,23 +161,50 @@ def main():
 
     print("\n\n")
     for (size, entries_by_size) in sorted(sizes.items()):
+        FILES_SIZED += len(entries_by_size)
         if size < SIZE_MIN:
             continue
 
-        entries_by_hash = group_matches_by(entries_by_size, fast_hash)
-        if entries_by_hash:
-            print(f"{size} ({human_bytes(size)})")
-            for (hash, entries) in entries_by_hash.items():
-                TOTAL_BYTES += size * len(entries)
-                DUPLICATE_BYTES += size * (len(entries) - 1)
-                print(f"  {hash}")
+        FILES_SCANNED += len(entries_by_size)
+        human_size = human_bytes(size)
+
+        if (entries_by_digest := group_matches_by(entries_by_size, fast_hash)):
+            duplicate_entries_across_digests = 0
+            duplicate_bytes_across_digests = 0
+
+            print(f"Group {size} ({human_size})")
+            for (idx, (digest, entries)) in enumerate(entries_by_digest.items()):
+                if idx:
+                    print()
+
+                duplicate_entries = len(entries) - 1
+                duplicate_bytes = size * duplicate_entries
+                read_bytes = duplicate_bytes + size
+
+                duplicate_entries_across_digests += duplicate_entries
+                duplicate_bytes_across_digests += duplicate_bytes
+
+                DUPLICATE_BYTES += duplicate_bytes
+                BYTES_SCANNED += read_bytes
+
+                print(f"  Digest {digest}")
                 for entry in entries:
                     print(f"    {entry.path}")
-                print()
+                print(f"  (x{duplicate_entries} = {human_bytes(duplicate_bytes)} duplicate bytes for this digest)")
 
-    print(f"TOTAL FILES VISITED: {TOTAL:,}")
-    print(f"TOTAL BYTES HASHED: {TOTAL_BYTES} ({human_bytes(TOTAL_BYTES)})")
-    print(f"TOTAL DUPLICATE BYTES: {DUPLICATE_BYTES} ({human_bytes(DUPLICATE_BYTES)})")
+            if len(entries_by_digest) > 1:
+                print(f"(x{duplicate_entries_across_digests} = {human_bytes(duplicate_bytes_across_digests)} duplicate bytes for this file size)")
+            print()
+
+            DUPLICATE_FILES += duplicate_entries_across_digests
+
+    print(f"TOTAL FILES FOUND: {FILES_FOUND:,}")
+    print(f"TOTAL FILES SIZED: {FILES_SIZED:,}")
+    print(f"TOTAL FILES SCANNED: {FILES_SCANNED:,}")
+    print(f"TOTAL BYTES SCANNED: {BYTES_SCANNED} ({human_bytes(BYTES_SCANNED)})")
+    print()
+    print(f"TOTAL DUPLICATE FILES: {DUPLICATE_FILES:,} ({safe_percent(DUPLICATE_FILES, FILES_SIZED)} of {FILES_SIZED:,} considered)")
+    print(f"TOTAL DUPLICATE BYTES: {DUPLICATE_BYTES} ({human_bytes(DUPLICATE_BYTES)}) ({safe_percent(DUPLICATE_BYTES, BYTES_SCANNED)} of {human_bytes(BYTES_SCANNED)} considered)")
 
 
 if __name__ == '__main__':
